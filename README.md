@@ -1,67 +1,42 @@
-🛡️ Shelter Management Microservice (AWS Serverless)
+🛡️ Shelter Service Proposal Documents
 
-Project Owner: นายณัฐนนท์ ดวงจินดา (Student ID: 6609611923) 
-🌊 Overview
+ชุดเอกสารข้อเสนอการออกแบบระบบ Shelter Service สำหรับการจัดการศูนย์พักพิงในสถานการณ์ภัยพิบัติ ประกอบด้วยเอกสารสำคัญ 4 ส่วน ดังนี้:
+📑 รายละเอียดเอกสารการออกแบบ
 
-Shelter Service เป็นระบบบริหารจัดการศูนย์พักพิงอัจฉริยะที่ออกแบบมาเพื่อรองรับสถานการณ์ภัยพิบัติ ทำหน้าที่เป็นหัวใจหลักในการคำนวณพิกัดเพื่อหาที่พักที่ใกล้ที่สุด และจัดการการจองพื้นที่แบบเรียลไทม์เพื่อป้องกันปัญหาความแออัด  โดยใช้สถาปัตยกรรมแบบ Event-Driven Microservices บนระบบ Cloud ของ AWS ทั้งหมด
-🚀 Key Features
+1. Service Overview 
 
-    Real-time GIS Query: ค้นหาศูนย์พักพิงที่เปิดทำการ (OPEN) โดยคำนวณจากพิกัดละติจูด/ลองจิจูดของผู้ประสบภัย.
+เอกสารที่ระบุบทบาทและขอบเขตหน้าที่ของบริการเพื่อให้ระบบทำงานได้อย่างเป็นอิสระ (Autonomy)
 
-    Race Condition Prevention: ระบบจองที่พักใช้กลไก Asynchronous Queue ร่วมกับ Row-level Locking ใน Database เพื่อให้มั่นใจว่าการตัดโควตาความจุจะถูกต้อง 100% แม้มีการจองเข้ามาพร้อมกันจำนวนมาก.
+    วัตถุประสงค์: จัดการข้อมูลที่ตั้ง ความจุ และสภาพเส้นทางเข้าถึงศูนย์พักพิงแบบ Real-time 
 
-    Operational Awareness: เจ้าหน้าที่หน้างานสามารถอัปเดตสถานะสภาพเส้นทาง (Access Level) เช่น ทางขาด หรือ น้ำท่วมรถเล็กผ่านไม่ได้ เพื่อความปลอดภัยในการอพยพ.
+    การแก้ปัญหา (Pain Point): ป้องกันความผิดพลาดในการส่งตัวผู้ประสบภัยไปยังศูนย์ที่เต็มแล้ว หรือเส้นทางที่อันตราย 
 
-🏗️ Service Architecture
+    กติกาการตัดสินใจ: ระบบมีความเป็นอิสระในการยืนยันหรือปฏิเสธการเข้าพักตามความจุที่มีอยู่จริง (Capacity Limit) โดยไม่ต้องรอมนุษย์อนุมัติเพื่อความรวดเร็ว 
 
-ระบบถูกออกแบบให้รองรับทั้งแบบ Synchronous (API) และ Asynchronous (Event) 
+2. Service Data 
 
-    Computing: AWS Lambda (Serverless)
+รายละเอียดของตารางข้อมูลที่บริการนี้เป็นเจ้าของ (Data Ownership) เพื่อรองรับการตัดสินใจ
 
-    API Management: Amazon API Gateway
+    Shelter Master & Operational Data: เก็บพิกัดภูมิศาสตร์ (Lat/Long) และสถานะความจุปัจจุบัน 
 
-    Messaging: Amazon SQS (Command Queue) & Amazon SNS (Event Notification)
+    Concurrency Control: การออกแบบฟิลด์ currentOccupancy มีการระบุให้ใช้กลไก Row-level Locking ในระดับ Database เพื่อป้องกันความผิดพลาดเมื่อมีการจองพื้นที่พร้อมกันจำนวนมาก 
 
-    Database: Amazon RDS (PostgreSQL) - ใช้สำหรับจัดการ Transaction และ Spatial Data.
+    Data Linking: อ้างอิงรหัสเหตุการณ์ (incidentId) ตาม Central Schema เพื่อใช้ในการติดตามย้อนหลังแต่ไม่เก็บข้อมูลซ้ำซ้อน 
 
-📡 API Contracts & Messaging
+3. Synchronous Contract  
 
-1. Find Available Shelters (Sync) 
+ข้อกำหนดการสื่อสารผ่าน REST API สำหรับงานที่ต้องการผลลัพธ์ในทันที
 
-    Endpoint: GET /v1/shelters 
+    Find Available Shelter (GET): ค้นหาและคำนวณระยะทางจากพิกัดผู้ประสบภัยเพื่อแสดงผลศูนย์พักพิงที่เหมาะสมที่สุด 
 
-    Purpose: ค้นหาที่พักที่อยู่ใกล้ที่สุดจากพิกัดผู้ใช้.
+    Update Shelter Condition (PATCH): ช่วยให้เจ้าหน้าที่หน้างานสามารถรายงานสภาพเส้นทาง (เช่น ทางขาด, น้ำท่วม) ได้ทันทีเพื่อความปลอดภัยในการอพยพ 
 
-    Query Params: user_lat, user_long, radius_km.
+4. Asynchronous Contract (การเชื่อมต่อแบบรอผล) 
 
-2. Update Shelter Condition (Sync) 
+ข้อกำหนดการสื่อสารผ่าน Message Queue สำหรับงานที่มีความซับซ้อนและทราฟฟิกสูง
 
-    Endpoint: PATCH /v1/shelters/{shelterId} 
+    Shelter Reservation Request: ระบบรับคำขอจองพื้นที่ผ่านคิวเพื่อประมวลผลตามลำดับ ช่วยลดโอกาสการเกิด Race Condition 
 
-    Purpose: อัปเดตสถานะเปิด/ปิด หรือระดับความปลอดภัยของเส้นทาง.
+    Reliability Design: มีการออกแบบระบบ Retry และการใช้ Dead Letter Queue (DLQ) เพื่อรองรับกรณีที่การประมวลผลคำขอจองเกิดความขัดข้อง 
 
-3. Request Shelter Reservation (Async) 
-
-    Channel: shelter.reservation.commands.v1 (Amazon SQS) 
-
-    Message: ShelterReservationRequested 
-
-    Reliability: มีการใช้ messageId เป็น Idempotency Key เพื่อป้องกันการประมวลผลคำสั่งจองซ้ำ.
-
-🛠️ Data Model & Concurrency
-
-ระบบแยกการจัดเก็บข้อมูลออกเป็น 3 ส่วนหลักเพื่อความเป็นอิสระ (Autonomy):
-
-    Shelter Master Data: ข้อมูลพิกัดและข้อมูลพื้นฐาน.
-
-    Operational State: สถานะความจุที่เปลี่ยนแปลงตลอดเวลา (ใช้ Row-locking ในการอัปเดต).
-
-    Reservation Data: ประวัติการจัดสรรพื้นที่อ้างอิงกับ Central Incident Schema.
-
-🛡️ Reliability & Failure Handling
-
-    Timeout: API กำหนดค่า Timeout ไว้ที่ 30 วินาทีเพื่อความเสถียร.
-
-    Retry Policy: รองรับการทำงานซ้ำในกรณี Network ขัดข้อง และมีการใช้ Dead Letter Queue (DLQ) หากคำสั่งจองล้มเหลวเกินกำหนด.
-
-    Rollback: ใช้ Database Transaction เพื่อรักษาความถูกต้องของข้อมูลความจุในกรณีที่ระบบประมวลผลไม่สำเร็จ.
+    Idempotency: ใช้ messageId ในการตรวจสอบเพื่อป้องกันการประมวลผลคำสั่งจองซ้ำ
