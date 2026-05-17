@@ -150,7 +150,9 @@ const App: React.FC = () => {
           body: JSON.stringify({
             shelterId: selectedShelter.shelter_id,
             citizenId: evacuee.citizenId,
-            fullName: `${evacuee.firstName} ${evacuee.lastName}`
+            fullName: `${evacuee.firstName} ${evacuee.lastName}`,
+            firstName: evacuee.firstName,
+            lastName: evacuee.lastName
           })
         });
 
