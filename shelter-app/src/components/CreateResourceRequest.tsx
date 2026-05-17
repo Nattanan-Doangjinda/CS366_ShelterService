@@ -6,11 +6,11 @@ import {
   MapPin, 
   Phone, 
   FileText, 
+  ClipboardList,
   Send, 
   Loader2, 
   CheckCircle2, 
   AlertCircle,
-  ChevronLeft,
   Truck
 } from 'lucide-react';
 
@@ -144,7 +144,7 @@ const CreateResourceRequest: React.FC = () => {
     };
 
     try {
-      const response = await fetch(`${BASE_URL}/v1/resource/`, {
+      const response = await fetch(`${BASE_URL}/v1/resource`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
