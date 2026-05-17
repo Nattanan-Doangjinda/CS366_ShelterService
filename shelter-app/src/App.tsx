@@ -14,9 +14,11 @@ import {
   Users,
   Plus,
   Trash2,
-  Stethoscope
+  Stethoscope,
+  Truck
 } from 'lucide-react';
 import CreateNotification from './components/CreateNotification';
+import CreateResourceRequest from './components/CreateResourceRequest';
 
 // --- Types ---
 type Shelter = {
@@ -37,7 +39,7 @@ type CheckInResponse = {
   };
 };
 
-type AppState = 'login' | 'search' | 'register' | 'notification';
+type AppState = 'login' | 'search' | 'register' | 'notification' | 'resource';
 
 type Evacuee = {
   id: string; // Internal local ID for mapping
@@ -227,7 +229,13 @@ const App: React.FC = () => {
           <ShieldCheck className="w-6 h-6 text-blue-600" />
           <span className="font-bold text-xl">Shelter App</span>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
+          <button 
+            onClick={() => setView('resource')}
+            className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center transition-colors border border-blue-100"
+          >
+            <Truck className="w-4 h-4 mr-1.5" /> เบิกทรัพยากร
+          </button>
           <button 
             onClick={() => setView('notification')}
             className="text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center transition-colors border border-red-100"
@@ -480,6 +488,17 @@ const App: React.FC = () => {
             <ChevronLeft className="w-5 h-5 mr-1" /> กลับไปหน้าค้นหา
           </button>
           <CreateNotification />
+        </div>
+      )}
+      {view === 'resource' && (
+        <div className="relative">
+          <button 
+            onClick={() => setView('search')}
+            className="absolute top-12 left-12 flex items-center text-gray-600 hover:text-blue-600 font-bold z-10 bg-white/80 backdrop-blur px-4 py-2 rounded-xl shadow-sm border border-gray-100 transition-all"
+          >
+            <ChevronLeft className="w-5 h-5 mr-1" /> กลับไปหน้าค้นหา
+          </button>
+          <CreateResourceRequest />
         </div>
       )}
     </div>
