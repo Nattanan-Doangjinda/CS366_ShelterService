@@ -80,11 +80,20 @@ const App: React.FC = () => {
       
       if (!response.ok) throw new Error('Failed to fetch shelters');
       
-      const data = await response.json();
+      const result = await response.json();
       
-      // Mock accessibility data as it's not in the API
+      // Handle response as a single object nested in data: { data: { ... } }
+      // or as an array if the API changes later
+      let rawData = [];
+      if (result.data) {
+        rawData = Array.isArray(result.data) ? result.data : [result.data];
+      } else if (Array.isArray(result)) {
+        rawData = result;
+      }
+
+      // Mock accessibility data
       const levels = ['Easy', 'Medium', 'Hard'];
-      const mappedData = data.map((s: any, index: number) => ({
+      const mappedData = rawData.map((s: any, index: number) => ({
         ...s,
         accessibility: levels[index % levels.length]
       }));
