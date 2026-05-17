@@ -101,7 +101,7 @@ const CreateNotification: React.FC = () => {
     setStatus(null);
 
     try {
-      const response = await fetch('http://api.hospital-net.com/v1/notifications', {
+      const response = await fetch('https://x5gagalda5.execute-api.us-east-1.amazonaws.com/v1/notifications', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
