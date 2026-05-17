@@ -1,4 +1,4 @@
-import React, { useState} from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, 
   MapPin, 
@@ -11,8 +11,12 @@ import {
   ShieldCheck,
   Lock,
   LogOut,
-  Users
+  Users,
+  Plus,
+  Trash2,
+  Stethoscope
 } from 'lucide-react';
+import CreateNotification from './components/CreateNotification';
 
 // --- Types ---
 type Shelter = {
@@ -33,7 +37,14 @@ type CheckInResponse = {
   };
 };
 
-type AppState = 'login' | 'search' | 'register';
+type AppState = 'login' | 'search' | 'register' | 'notification';
+
+type Evacuee = {
+  id: string; // Internal local ID for mapping
+  firstName: string;
+  lastName: string;
+  citizenId: string;
+};
 
 const BASE_URL = "https://08lg17qkg8.execute-api.us-east-1.amazonaws.com/default";
 
@@ -52,12 +63,12 @@ const App: React.FC = () => {
   const [selectedShelter, setSelectedShelter] = useState<Shelter | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [checkInResult, setCheckInResult] = useState<CheckInResponse | null>(null);
+  const [checkInResults, setCheckInResults] = useState<CheckInResponse[]>([]);
 
-  // Form State
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [citizenId, setCitizenId] = useState('');
+  // Multi-person State
+  const [evacuees, setEvacuees] = useState<Evacuee[]>([
+    { id: crypto.randomUUID(), firstName: '', lastName: '', citizenId: '' }
+  ]);
 
   // Login State (Mock)
   const [username, setUsername] = useState('');
@@ -65,7 +76,6 @@ const App: React.FC = () => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Mock login success
     setView('search');
   };
 
@@ -73,7 +83,6 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      // Mock coordinates as requested (14.07, 100.60)
       const lat = 14.07;
       const lng = 100.60;
       const response = await fetch(`${BASE_URL}/nearby?lat=${lat}&lng=${lng}`);
@@ -81,9 +90,6 @@ const App: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch shelters');
       
       const result = await response.json();
-      
-      // Handle response as a single object nested in data: { data: { ... } }
-      // or as an array if the API changes later
       let rawData = [];
       if (result.data) {
         rawData = Array.isArray(result.data) ? result.data : [result.data];
@@ -91,7 +97,6 @@ const App: React.FC = () => {
         rawData = result;
       }
 
-      // Mock accessibility data
       const levels = ['Easy', 'Medium', 'Hard'];
       const mappedData = rawData.map((s: any, index: number) => ({
         ...s,
@@ -111,40 +116,60 @@ const App: React.FC = () => {
     setView('register');
   };
 
+  const addEvacuee = () => {
+    setEvacuees([...evacuees, { id: crypto.randomUUID(), firstName: '', lastName: '', citizenId: '' }]);
+  };
+
+  const removeEvacuee = (id: string) => {
+    if (evacuees.length > 1) {
+      setEvacuees(evacuees.filter(e => e.id !== id));
+    }
+  };
+
+  const updateEvacuee = (id: string, field: keyof Evacuee, value: string) => {
+    setEvacuees(evacuees.map(e => e.id === id ? { ...e, [field]: value } : e));
+  };
+
   const handleCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedShelter) return;
 
     setIsLoading(true);
     setError(null);
+    const results: CheckInResponse[] = [];
+    
     try {
-      const response = await fetch(`${BASE_URL}/check-in`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          shelterId: selectedShelter.shelter_id,
-          citizenId,
-          fullName: `${firstName} ${lastName}`
-        })
-      });
+      // Loop through all evacuees and send individual POST requests
+      // This matches the current Lambda logic which expects one check-in per request
+      for (const evacuee of evacuees) {
+        const response = await fetch(`${BASE_URL}/check-in`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            shelterId: selectedShelter.shelter_id,
+            citizenId: evacuee.citizenId,
+            fullName: `${evacuee.firstName} ${evacuee.lastName}`
+          })
+        });
 
-      if (!response.ok) throw new Error('Check-in failed');
-
-      const data = await response.json();
-      setCheckInResult(data);
+        if (!response.ok) throw new Error(`Check-in failed for ${evacuee.firstName}`);
+        const data = await response.json();
+        results.push(data);
+      }
+      setCheckInResults(results);
     } catch (err) {
-      setError('การลงทะเบียนล้มเหลว กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง');
+      setError('การลงทะเบียนบางส่วนหรือทั้งหมดล้มเหลว กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง');
     } finally {
       setIsLoading(false);
     }
   };
 
   const resetForm = () => {
-    setFirstName('');
-    setLastName('');
-    setCitizenId('');
-    setCheckInResult(null);
+    setEvacuees([{ id: crypto.randomUUID(), firstName: '', lastName: '', citizenId: '' }]);
+    setCheckInResults([]);
     setView('search');
+    // Re-fetch data to update occupancy numbers
+    fetchNearbyShelters();
   };
 
   // --- Render Functions ---
@@ -202,12 +227,20 @@ const App: React.FC = () => {
           <ShieldCheck className="w-6 h-6 text-blue-600" />
           <span className="font-bold text-xl">Shelter App</span>
         </div>
-        <button 
-          onClick={() => setView('login')}
-          className="text-gray-500 hover:text-red-500 flex items-center text-sm font-medium"
-        >
-          <LogOut className="w-4 h-4 mr-1" /> ออกจากระบบ
-        </button>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={() => setView('notification')}
+            className="text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center transition-colors border border-red-100"
+          >
+            <Stethoscope className="w-4 h-4 mr-1.5" /> แจ้งโรงพยาบาล (ER)
+          </button>
+          <button 
+            onClick={() => setView('login')}
+            className="text-gray-500 hover:text-red-500 flex items-center text-sm font-medium"
+          >
+            <LogOut className="w-4 h-4 mr-1" /> ออกจากระบบ
+          </button>
+        </div>
       </header>
 
       <div className="text-center space-y-4">
@@ -282,7 +315,7 @@ const App: React.FC = () => {
   );
 
   const renderRegister = () => (
-    <div className="max-w-2xl mx-auto p-6">
+    <div className="max-w-3xl mx-auto p-6">
       <button 
         onClick={() => setView('search')}
         className="mb-6 flex items-center text-gray-600 hover:text-blue-600 font-medium transition-colors"
@@ -291,50 +324,84 @@ const App: React.FC = () => {
       </button>
 
       <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
-        <div className="bg-blue-600 p-8 text-white">
-          <h2 className="text-2xl font-bold">แบบฟอร์มลงทะเบียน</h2>
-          <p className="text-blue-100 opacity-90 mt-1">
-            ศูนย์พักพิง: <span className="font-semibold">{selectedShelter?.name}</span>
-          </p>
+        <div className="bg-blue-600 p-8 text-white flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold">ลงทะเบียนผู้ประสบภัย</h2>
+            <p className="text-blue-100 opacity-90 mt-1">
+              ศูนย์พักพิง: <span className="font-semibold">{selectedShelter?.name}</span>
+            </p>
+          </div>
+          <div className="bg-white/20 px-4 py-2 rounded-full text-sm font-bold">
+            ทั้งหมด {evacuees.length} คน
+          </div>
         </div>
 
-        <form onSubmit={handleCheckIn} className="p-8 space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-sm font-bold text-gray-700">ชื่อ (First Name)</label>
-              <input
-                type="text"
-                required
-                className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-bold text-gray-700">นามสกุล (Last Name)</label>
-              <input
-                type="text"
-                required
-                className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-              />
-            </div>
+        <form onSubmit={handleCheckIn} className="p-8 space-y-8">
+          <div className="space-y-6">
+            {evacuees.map((evacuee, index) => (
+              <div key={evacuee.id} className="p-6 bg-gray-50 rounded-2xl border border-gray-100 relative group animate-in slide-in-from-right-4 duration-300">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold text-sm">
+                    {index + 1}
+                  </span>
+                  {evacuees.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEvacuee(evacuee.id)}
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4 mb-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-bold text-gray-700">ชื่อ (First Name)</label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white transition-all"
+                      value={evacuee.firstName}
+                      onChange={(e) => updateEvacuee(evacuee.id, 'firstName', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-bold text-gray-700">นามสกุล (Last Name)</label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white transition-all"
+                      value={evacuee.lastName}
+                      onChange={(e) => updateEvacuee(evacuee.id, 'lastName', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-bold text-gray-700">เลขบัตรประชาชน 13 หลัก (Citizen ID)</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={13}
+                    pattern="\d{13}"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white transition-all"
+                    placeholder="x-xxxx-xxxxx-xx-x"
+                    value={evacuee.citizenId}
+                    onChange={(e) => updateEvacuee(evacuee.id, 'citizenId', e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-bold text-gray-700">เลขบัตรประชาชน 13 หลัก (Citizen ID)</label>
-            <input
-              type="text"
-              required
-              maxLength={13}
-              pattern="\d{13}"
-              className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-              placeholder="x-xxxx-xxxxx-xx-x"
-              value={citizenId}
-              onChange={(e) => setCitizenId(e.target.value.replace(/\D/g, ''))}
-            />
-          </div>
+          <button
+            type="button"
+            onClick={addEvacuee}
+            className="w-full py-4 border-2 border-dashed border-gray-300 rounded-2xl text-gray-500 font-bold flex items-center justify-center hover:border-blue-500 hover:text-blue-500 hover:bg-blue-50 transition-all"
+          >
+            <Plus className="w-5 h-5 mr-2" /> เพิ่มรายชื่อผู้ประสบภัย
+          </button>
 
           {isLoading ? (
             <LoadingSpinner />
@@ -343,7 +410,7 @@ const App: React.FC = () => {
               type="submit"
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-[0.98]"
             >
-              Check-in เข้าศูนย์พักพิง
+              Check-in ทั้งหมด ({evacuees.length} คน)
             </button>
           )}
 
@@ -354,38 +421,41 @@ const App: React.FC = () => {
       </div>
 
       {/* Success Modal */}
-      {checkInResult && (
+      {checkInResults.length > 0 && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl animate-in zoom-in duration-300">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
             <div className="text-center space-y-4">
               <div className="inline-flex items-center justify-center p-4 bg-green-100 rounded-full">
                 <CheckCircle2 className="w-12 h-12 text-green-600" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-900">เช็คอินสำเร็จ!</h3>
+              <h3 className="text-2xl font-bold text-gray-900">เช็คอินสำเร็จ {checkInResults.length} ท่าน!</h3>
               <p className="text-gray-600">ลงทะเบียนข้อมูลเข้าสู่ระบบเรียบร้อยแล้ว</p>
               
-              <div className="bg-gray-50 p-4 rounded-2xl text-left space-y-2 border border-gray-100">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Registration ID</p>
-                <p className="text-sm font-mono text-gray-700 break-all">{checkInResult.rosterId}</p>
-              </div>
-
-              {checkInResult.alertMissingPerson && (
-                <div className="bg-red-50 border-2 border-red-200 p-4 rounded-2xl text-left space-y-2 animate-pulse">
-                  <div className="flex items-center text-red-700 font-bold">
-                    <AlertCircle className="w-5 h-5 mr-2" /> แจ้งเตือน: พบประวัติคนหาย
-                  </div>
-                  <p className="text-sm text-red-600">กรุณาประสานงานเจ้าหน้าที่ตำรวจในพื้นที่เพื่อตรวจสอบข้อมูลเพิ่มเติม</p>
-                  {checkInResult.preArrivalInfo && (
-                    <div className="mt-2 pt-2 border-t border-red-100">
-                      <p className="text-xs font-bold text-red-500">CRITICAL LEVEL: {checkInResult.preArrivalInfo.criticalLevel}</p>
+              <div className="space-y-4">
+                {checkInResults.map((result, idx) => (
+                  <div key={idx} className="bg-gray-50 p-4 rounded-2xl text-left space-y-3 border border-gray-100">
+                    <div className="flex justify-between items-center">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Person {idx + 1}</p>
+                      <span className="text-[10px] font-mono text-gray-400">{result.rosterId.split('-')[0]}...</span>
                     </div>
-                  )}
-                </div>
-              )}
+
+                    {result.alertMissingPerson && (
+                      <div className="bg-red-50 border border-red-200 p-3 rounded-xl">
+                        <div className="flex items-center text-red-700 font-bold text-sm">
+                          <AlertCircle className="w-4 h-4 mr-2" /> พบประวัติคนหาย!
+                        </div>
+                        {result.preArrivalInfo && (
+                          <p className="text-[10px] font-bold text-red-500 mt-1 uppercase">LEVEL: {result.preArrivalInfo.criticalLevel}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
 
               <button
                 onClick={resetForm}
-                className="w-full py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-xl transition-colors"
+                className="w-full py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-xl transition-colors mt-6"
               >
                 เสร็จสิ้น
               </button>
@@ -401,6 +471,17 @@ const App: React.FC = () => {
       {view === 'login' && renderLogin()}
       {view === 'search' && renderSearch()}
       {view === 'register' && renderRegister()}
+      {view === 'notification' && (
+        <div className="relative">
+          <button 
+            onClick={() => setView('search')}
+            className="absolute top-8 left-8 flex items-center text-gray-600 hover:text-red-600 font-bold z-10 bg-white/80 backdrop-blur px-4 py-2 rounded-xl shadow-sm border border-gray-100 transition-all"
+          >
+            <ChevronLeft className="w-5 h-5 mr-1" /> กลับไปหน้าค้นหา
+          </button>
+          <CreateNotification />
+        </div>
+      )}
     </div>
   );
 };
